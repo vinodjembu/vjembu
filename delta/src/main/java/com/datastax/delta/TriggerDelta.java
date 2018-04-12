@@ -11,15 +11,25 @@ import java.util.concurrent.Executors;
 import com.datastax.driver.core.ConsistencyLevel;
 import com.datastax.driver.core.SimpleStatement;
 import com.datastax.driver.core.Statement;
+import com.datastax.driver.core.policies.DCAwareRoundRobinPolicy;
 import com.datastax.driver.dse.DseCluster;
 import com.datastax.driver.dse.DseSession;
 
+/**
+ * Find the latency replicated copies of data between two DC with different
+ * Region
+ * 
+ * @author vinodjembu
+ *
+ */
 public class TriggerDelta {
 
 	public static void main(String[] args) {
-		// DseSession session = createConnection(prop);
+
+		//// Users//vinodjembu//Documents//git-repo//delta//src//main//resources//delta.properties
+		// Load properties with arguments
 		Properties prop = getProperties(
-				"//Users//vinodjembu//workspace//bootcamp//delta//src//main//resources//delta.properties");
+				"//Users//vinodjembu//Documents//git-repo//delta//src//main//resources//delta.properties");
 		int numerofRecords = Integer.parseInt(prop.getProperty("num_record"));
 		DseSession writesession = createWriteConnection(prop);
 		DseSession readsession = createReadConnection(prop);
@@ -30,6 +40,12 @@ public class TriggerDelta {
 
 	}
 
+	/**
+	 * Load the property file
+	 * 
+	 * @param filepath
+	 * @return
+	 */
 	private static Properties getProperties(String filepath) {
 		Properties prop = new Properties();
 
@@ -49,35 +65,47 @@ public class TriggerDelta {
 	}
 
 	/**
-	 * Return Local Cassandra Session
+	 * Return Cassandra Write Session
 	 * 
+	 * @param prop
 	 * @return
 	 */
-	private static DseSession createConnection(Properties prop) {
-		DseCluster cluster = null;
-		cluster = DseCluster.builder().addContactPoint(prop.getProperty("localSeed")).build();
-		DseSession session = cluster.connect();
-		return session;
-
-	}
-
 	private static DseSession createWriteConnection(Properties prop) {
 		DseCluster cluster = null;
-		cluster = DseCluster.builder().addContactPoint(prop.getProperty("writeSeed")).build();
+		cluster = DseCluster.builder().addContactPoint(prop.getProperty("writeSeed"))
+				.withLoadBalancingPolicy(DCAwareRoundRobinPolicy.builder().withLocalDc(prop.getProperty("writeDC"))
+						.withUsedHostsPerRemoteDc(2).allowRemoteDCsForLocalConsistencyLevel()
+
+						.build())
+				.build();
 		DseSession session = cluster.connect();
-		System.out.println("The keyspaces known by Connection are: " + cluster.getMetadata().getKeyspaces().toString());
 		return session;
 
 	}
 
+	/**
+	 * Return Cassandra Read Session
+	 * 
+	 * @param prop
+	 * @return
+	 */
 	private static DseSession createReadConnection(Properties prop) {
 		DseCluster cluster = null;
-		cluster = DseCluster.builder().addContactPoint(prop.getProperty("readSeed")).build();
+		cluster = DseCluster.builder().addContactPoint(prop.getProperty("readSeed"))
+				.withLoadBalancingPolicy(DCAwareRoundRobinPolicy.builder().withLocalDc(prop.getProperty("readDC"))
+						.withUsedHostsPerRemoteDc(2).allowRemoteDCsForLocalConsistencyLevel().build())
+				.build();
 		DseSession session = cluster.connect();
 		return session;
 
 	}
 
+	/**
+	 * Create Delta Keyspace and Latency Find Table
+	 * 
+	 * @param session
+	 * @param prop
+	 */
 	private static void createKeyspaceAndTables(DseSession session, Properties prop) {
 		// Local Keyspace
 		// Statement createKS = new SimpleStatement(
@@ -85,9 +113,6 @@ public class TriggerDelta {
 		// 'SimpleStrategy', 'replication_factor': 1}");
 
 		// DROP KEYPSACE if EXIST
-		Statement dropKS = new SimpleStatement("DROP KEYSPACE IF  EXISTS delta ");
-		System.out.println(dropKS);
-
 		Statement createKS = new SimpleStatement(
 				"CREATE KEYSPACE IF NOT EXISTS delta WITH replication = {'class': 'NetworkTopologyStrategy', '"
 						+ prop.getProperty("writeDC") + " ': 3, '" + prop.getProperty("readDC") + "' :3}");
@@ -102,10 +127,17 @@ public class TriggerDelta {
 		session.execute(createTable);
 	}
 
+	/**
+	 * Spin Write and Read thread for different DC to find latency between DC
+	 * 
+	 * @param writesession
+	 * @param readsession
+	 * @param numerofRecords
+	 */
 	private static void findDelta(DseSession writesession, DseSession readsession, int numerofRecords) {
 
 		ExecutorService executor = Executors.newFixedThreadPool(5);
-		for (int i = 0; i < 3; i++) {
+		for (int i = 0; i < 4; i++) {
 			if (i == 0) {
 				Runnable insertWorker = new InsertDelta(writesession, numerofRecords);
 				executor.execute(insertWorker);

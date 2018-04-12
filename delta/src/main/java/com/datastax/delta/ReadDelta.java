@@ -3,12 +3,19 @@ package com.datastax.delta;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
 
+import com.datastax.driver.core.ConsistencyLevel;
 import com.datastax.driver.core.ResultSet;
 import com.datastax.driver.core.Row;
 import com.datastax.driver.core.SimpleStatement;
 import com.datastax.driver.core.Statement;
 import com.datastax.driver.dse.DseSession;
 
+/**
+ * Read records from one of the region
+ * 
+ * @author vinodjembu
+ *
+ */
 public class ReadDelta implements Runnable {
 	DseSession session;
 	int record_no;
@@ -27,6 +34,7 @@ public class ReadDelta implements Runnable {
 		boolean isAvailable = true;
 		while (isAvailable) {
 			read = new SimpleStatement("SELECT writeTime FROM delta.latencyfind where id = " + record_no + ";");
+			read.setConsistencyLevel(ConsistencyLevel.ONE);
 			ResultSet rs = session.execute(read);
 
 			List<Row> allResults = rs.all();

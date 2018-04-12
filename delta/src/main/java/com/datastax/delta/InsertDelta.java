@@ -5,6 +5,12 @@ import com.datastax.driver.core.SimpleStatement;
 import com.datastax.driver.core.Statement;
 import com.datastax.driver.dse.DseSession;
 
+/**
+ * Insert records into one of the region
+ * 
+ * @author vinodjembu
+ *
+ */
 public class InsertDelta implements Runnable {
 	DseSession session;
 	int numerofRecords;
